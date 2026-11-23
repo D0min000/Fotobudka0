@@ -83,7 +83,8 @@
   /* ---------- budka ---------- */
   #stage{position:fixed;inset:0;background:#000;overflow:hidden}
   #view{position:absolute;left:50%;top:0;width:100%;height:100%;transform:translateX(-50%);overflow:hidden;background:#000}
-  video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;transform:scale(var(--z,1))}
+  video::-webkit-media-controls,video::-webkit-media-controls-panel,video::-webkit-media-controls-start-playback-button,video::-webkit-media-controls-play-button,video::-webkit-media-controls-overlay-play-button{display:none!important;-webkit-appearance:none}
+  video{pointer-events:none;-webkit-touch-callout:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;transform:scale(var(--z,1))}
   video.mirror{transform:scaleX(-1) scale(var(--z,1))}
   .topbar{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;
     padding:calc(env(safe-area-inset-top,0px) + 14px) max(18px,env(safe-area-inset-right,0px)) 14px max(18px,env(safe-area-inset-left,0px));
@@ -287,7 +288,7 @@
 
 <!-- ========== BUDKA ========== -->
 <div id="stage" hidden>
-  <div id="view"><video id="video" autoplay playsinline muted></video></div>
+  <div id="view"><video id="video" autoplay playsinline muted disablepictureinpicture disableremoteplayback controlslist="nodownload nofullscreen noremoteplayback"></video></div>
 
   <div class="topbar">
     <div class="brand"><span id="brandTitle">Fotobudka</span><small id="brandSub"></small></div>
@@ -458,7 +459,7 @@
 
 <!-- ========== KAMERA (iPhone) ========== -->
 <div id="kamera" hidden>
-  <video id="kVideo" autoplay playsinline muted></video>
+  <video id="kVideo" autoplay playsinline muted disablepictureinpicture disableremoteplayback controlslist="nodownload nofullscreen noremoteplayback"></video>
   <div class="ktop">
     <div><b>Kamera</b><small id="kRoom"></small></div>
     <span class="chip" id="kChip">start…</span>
@@ -510,7 +511,7 @@ function loadJson(key,def){
 function saveJson(key,o){try{localStorage.setItem(key,JSON.stringify(o))}catch(e){}}
 
 /* ---------- konfiguracja i ustawienia ---------- */
-var APP_VERSION='2026-11-23.1';
+var APP_VERSION='2026-11-23.2';
 var CFG_KEY='fotobudka.cfg.v2',SET_KEY='fotobudka.v2';
 function loadRaw(key,def){try{var o=JSON.parse(localStorage.getItem(key)||'null');return(o&&typeof o==='object')?o:def}catch(e){return def}}
 var C=loadJson(CFG_KEY,{role:'',db:'',room:'impreza',pin:'1234',auto:false});
