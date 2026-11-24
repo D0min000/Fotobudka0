@@ -1,5 +1,5 @@
 /* Fotobudka: service worker. Strona startuje z pamięci urządzenia, gdy nie ma internetu. */
-var V='fotobudka-2026-11-24.1';
+var V='fotobudka-2026-11-24.3';
 var CORE=['index.html','manifest.webmanifest','icon-180.png','icon-192.png','icon-512.png'];
 
 self.addEventListener('install',function(e){

@@ -491,6 +491,7 @@
       <button class="btn sm" id="pairCopy" type="button">Kopiuj link</button>
     </div>
     <div class="plab">Mam kod lub link z drugiego urządzenia:</div>
+    <button class="btn primary" id="pairPaste" type="button">Wklej ze schowka i połącz</button>
     <div class="prow"><input id="pairIn" type="text" placeholder="Wklej link"><button class="btn sm primary" id="pairApply" type="button">Użyj</button></div>
     <div id="pairMsg"></div>
     <button class="btn" id="pairClose" type="button">Zamknij</button>
@@ -512,7 +513,7 @@ function loadJson(key,def){
 function saveJson(key,o){try{localStorage.setItem(key,JSON.stringify(o))}catch(e){}}
 
 /* ---------- konfiguracja i ustawienia ---------- */
-var APP_VERSION='2026-11-24.1';
+var APP_VERSION='2026-11-24.3';
 /* iOS (zwłaszcza tryb oszczędzania baterii) potrafi wstrzymać wideo albo zawiesić play() do czasu dotyku: nie czekamy na play(), a dowolny dotyk wznawia podgląd */
 function kickPlay(v){try{var p=v.play();if(p&&p.catch)p.catch(function(){})}catch(e){}}
 function resumeVideos(){['video','kVideo'].forEach(function(id){var v=document.getElementById(id);if(v&&v.srcObject&&v.paused)kickPlay(v)})}
@@ -1537,9 +1538,9 @@ function boothLinkMsg(b,data){
 function budkaPair(){
   closeDrawer();
   if(remote&&!remote.ready&&remote.sdp){
-    pairShow('cam','Kod dla iPhone\'a (Kamera)','Na iPhonie otwórz zwykłą aplikację Aparat i zeskanuj ten kod (otworzy się ta strona w roli Kamera). iPhone pokaże kod odpowiedzi, który zeskanuj aparatem tego iPada.',{k:'cam/offer',sid:remote.sid,sdp:remote.sdp,room:C.room});
+    pairShow('cam','Kod dla iPhone\'a (Kamera)','Krok 1: przenieś ten kod na iPhone’a. Zeskanuj go zwykłym Aparatem iPhone’a albo dotknij „Kopiuj link”, a na iPhonie w Kamerze wybierz „Kod QR” i „Wklej ze schowka i połącz”. Krok 2: iPhone pokaże kod odpowiedzi. Przenieś go tutaj tak samo: aparatem tego iPada albo „Kopiuj link” na iPhonie i poniżej „Wklej ze schowka i połącz”.',{k:'cam/offer',sid:remote.sid,sdp:remote.sdp,room:C.room});
   }else{
-    pairShow('link','Parowanie bez internetu','Zeskanuj aparatem iPada kod pokazany na Obsłudze albo wklej tutaj link z Obsługi.',null);
+    pairShow('link','Parowanie bez internetu','Jeśli Obsługa pokazuje kod, zeskanuj go Aparatem tego iPada albo dotknij „Kopiuj link” na Obsłudze i poniżej „Wklej ze schowka i połącz”.',null);
   }
 }
 $('pairBtn').addEventListener('click',budkaPair);
@@ -1752,7 +1753,7 @@ async function opsPair(){
   var t0=Date.now();
   while(!(link&&link.sdp)&&Date.now()-t0<8000)await sleep(150);
   if(!link||!link.sdp){pairShow('link','Nie mogę przygotować kodu','Ta przeglądarka nie obsługuje łączenia bezpośredniego. Użyj Safari.',null);return}
-  pairShow('link','Kod dla Budki','Na Budce zeskanuj ten kod aparatem iPada (albo w Ustawieniach Budki wybierz „Sparuj kodem QR” i wklej link). Budka pokaże kod odpowiedzi — zeskanuj go aparatem tego urządzenia.',{k:'link/offer',sid:link.sid,sdp:link.sdp});
+  pairShow('link','Kod dla Budki','Krok 1: przenieś ten kod na Budkę. Zeskanuj go Aparatem Budki albo dotknij „Kopiuj link”, a na Budce wybierz „Sparuj kodem QR” i „Wklej ze schowka i połącz”. Krok 2: Budka pokaże kod odpowiedzi. Przenieś go tutaj tak samo.',{k:'link/offer',sid:link.sid,sdp:link.sdp});
 }
 $('oPairBtn').addEventListener('click',function(){opsPair()});
 $('oPairBtn2').addEventListener('click',function(){$('oSet').hidden=true;opsPair()});
@@ -3136,7 +3137,18 @@ function qrDraw(canvas,text){
     return true;
   }catch(e){return false}
 }
-function slimSdp(s){if(window.__noSlim)return s;return String(s).split('\r\n').filter(function(l){return !/^a=(extmap|rtcp-fb|ssrc|msid|rtcp-rsize|rtcp-xr|max-message-size)/.test(l)}).join('\r\n')}
+function slimSdp(s){
+  if(window.__noSlim)return s;
+  /* usuwamy tylko to, co nie jest potrzebne w sieci lokalnej: dodatkowe sprzężenia zwrotne, rozszerzenia nagłówków (zostaje mid), kandydaci IPv6 i TCP.
+     Zostają ssrc, msid, mid oraz nack/pli, bo Safari ich potrzebuje do powiązania obrazu i odzyskiwania klatek. */
+  return String(s).split('\r\n').filter(function(l){
+    if(/^a=rtcp-fb:\S+ (goog-remb|transport-cc|ccm fir)/.test(l))return false;
+    if(/^a=extmap:/.test(l)&&!/sdes:mid/.test(l))return false;
+    if(/^a=(rtcp-rsize|rtcp-xr|max-message-size)/.test(l))return false;
+    if(/^a=candidate:/.test(l)){var p=l.split(' ');if((p[2]||'').toLowerCase()==='tcp'||(p[4]||'').indexOf(':')>=0)return false}
+    return true;
+  }).join('\r\n');
+}
 async function pairShow(kind,title,text,obj){
   if(obj&&obj.sdp)obj.sdp=slimSdp(obj.sdp);
   pairOpen=true;pairKind=kind||'';
@@ -3158,6 +3170,19 @@ function pairHide(kind){
   if(kind&&kind!==pairKind)return;
   pairOpen=false;pairKind='';$('pair').hidden=true;
 }
+function pairWatch(getPc,label){
+  var t0=Date.now(),iv=setInterval(function(){
+    var pc=getPc(),el=$('pairMsg'),st=pc?pc.connectionState:'';
+    var sec=Math.round((Date.now()-t0)/1000);
+    if(st==='connected'||!pairOpen){clearInterval(iv);return}
+    if(st==='failed'||sec>25){
+      clearInterval(iv);
+      el.textContent='Nie udało się połączyć. Sprawdź: 1) oba urządzenia są w tej samej sieci Wi-Fi (w trybie samolotowym włącz ręcznie samo Wi-Fi), 2) dane komórkowe i VPN są wyłączone, 3) w routerze nie ma izolacji klientów. Potem wygeneruj kod jeszcze raz.';
+      return;
+    }
+    el.textContent=(label||'Łączę')+'… '+sec+' s (stan: '+(st||'?')+')';
+  },1000);
+}
 function pairNotice(msg){pairOpen=true;$('pair').hidden=false;$('pairMsg').textContent=msg}
 async function pairApply(raw){
   var tok=String(raw||'').trim(),i=tok.indexOf('#p=');
@@ -3175,7 +3200,8 @@ async function pairApply(raw){
       kSid=o.sid;
       var a=await kAnswer(o,true);
       if(!a)return 'Nie udało się przygotować odpowiedzi.';
-      await pairShow('cam','Kod odpowiedzi dla Budki','Pokaż ten kod Budce: zeskanuj go aparatem iPada albo wklej link w oknie „Sparuj kodem QR” na Budce.',{k:'cam/answer',sid:a.sid,sdp:a.sdp});
+      await pairShow('cam','Kod odpowiedzi dla Budki','To jest kod odpowiedzi. Przenieś go na Budkę: zeskanuj go Aparatem iPada albo dotknij „Kopiuj link”, a na Budce w oknie „Połącz kodem QR” dotknij „Wklej ze schowka i połącz”.',{k:'cam/answer',sid:a.sid,sdp:a.sdp});
+      var kp=kPc;pairWatch(function(){return kp},'Czekam na Budkę');
       return null;
     }
     if(o.k==='cam/answer'){
@@ -3184,13 +3210,15 @@ async function pairApply(raw){
       remote.answered=true;
       await remote.pc.setRemoteDescription({type:'answer',sdp:o.sdp});
       $('pairMsg').textContent='Łączę…';
+      var rpc=remote.pc;pairWatch(function(){return rpc});
       return null;
     }
     if(o.k==='link/offer'){
       if(C.role!=='budka')return 'Ten kod jest dla Budki.';
       var b=await boothLinkAnswer(o,true);
       if(!b)return 'Nie udało się przygotować odpowiedzi.';
-      await pairShow('link','Kod odpowiedzi dla Obsługi','Zeskanuj ten kod aparatem urządzenia Obsługi albo wklej link w jego oknie parowania.',{k:'link/answer',sid:b.sid,sdp:b.sdp});
+      await pairShow('link','Kod odpowiedzi dla Obsługi','To jest kod odpowiedzi. Przenieś go na Obsługę: zeskanuj go Aparatem Obsługi albo dotknij „Kopiuj link”, a w oknie parowania Obsługi dotknij „Wklej ze schowka i połącz”.',{k:'link/answer',sid:b.sid,sdp:b.sdp});
+      var bp=bLink&&bLink.pc;pairWatch(function(){return bp},'Czekam na Obsługę');
       return null;
     }
     if(o.k==='link/answer'){
@@ -3199,6 +3227,7 @@ async function pairApply(raw){
       link.answered=true;
       await link.pc.setRemoteDescription({type:'answer',sdp:o.sdp});
       pairNotice('Łączę…');
+      var lpc=link.pc;pairWatch(function(){return lpc});
       return null;
     }
   }catch(e){return 'Błąd parowania: '+(e&&e.message?e.message:'?')}
@@ -3211,6 +3240,18 @@ $('pairCopy').addEventListener('click',async function(){
   try{await navigator.clipboard.writeText(u.value);b.textContent='Skopiowano ✓'}catch(e){}
   setTimeout(function(){b.textContent='Kopiuj link'},2000);
 });
+$('pairPaste').addEventListener('click',async function(){
+  var m=$('pairMsg');m.textContent='Odczytuję schowek…';
+  var t='';
+  try{t=await navigator.clipboard.readText()}catch(e){}
+  if(!t||t.indexOf('#p=')<0){
+    m.textContent='W schowku nie ma linku z drugiego urządzenia. Na drugim urządzeniu dotknij „Kopiuj link” (działa między urządzeniami z tym samym kontem Apple, przy włączonym Bluetooth i Wi-Fi), albo wklej link ręcznie w polu poniżej.';
+    return;
+  }
+  $('pairIn').value=t;m.textContent='Sprawdzam…';
+  var msg=await pairApply(t);
+  if(msg)m.textContent=msg;
+});
 $('pairApply').addEventListener('click',async function(){
   var v=$('pairIn').value;if(!v.trim())return;
   $('pairMsg').textContent='Sprawdzam…';
@@ -3218,7 +3259,7 @@ $('pairApply').addEventListener('click',async function(){
   if(msg)$('pairMsg').textContent=msg;
 });
 $('kPairBtn').addEventListener('click',function(){
-  pairShow('cam','Parowanie z budką bez internetu','Na Budce dotknij „Połącz kodem QR”, potem zeskanuj pokazany tam kod zwykłą aplikacją Aparat albo wklej tutaj link.',null);
+  pairShow('cam','Parowanie z budką bez internetu','Na Budce dotknij „Połącz kodem QR”. Potem zeskanuj pokazany tam kod zwykłym Aparatem albo, jeśli na Budce dotknąłeś „Kopiuj link”, dotknij poniżej „Wklej ze schowka i połącz”.',null);
 });
 function pairListen(){
   var bc=null;
